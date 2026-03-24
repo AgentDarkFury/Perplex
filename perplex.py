@@ -13,7 +13,7 @@ from plexapi.audio import TrackSession
 from plexapi.media import Media
 from plexapi.myplex import MyPlexAccount, MyPlexResource, PlexServer
 from plexapi.video import EpisodeSession, MovieSession
-from pypresence import Presence
+from pypresence import ActivityType, Presence
 
 
 class Perplex:
@@ -276,8 +276,11 @@ class Perplex:
                 {"label": "TMDB", "url": f"https://themoviedb.org/{mType}/{mId}"}
             ]
 
+        now = int(datetime.now().timestamp())
+        result["start"] = now - int(active.viewOffset / 1000)
         result["remaining"] = int((active.duration / 1000) - (active.viewOffset / 1000))
         result["imageText"] = active.title
+        result["activity_type"] = ActivityType.WATCHING
 
         logger.trace(result)
 
@@ -294,8 +297,11 @@ class Perplex:
 
         result["primary"] = active.show().title
         result["secondary"] = active.title
+        now = int(datetime.now().timestamp())
+        result["start"] = now - int(active.viewOffset / 1000)
         result["remaining"] = int((active.duration / 1000) - (active.viewOffset / 1000))
         result["imageText"] = active.show().title
+        result["activity_type"] = ActivityType.WATCHING
 
         if (active.seasonNumber) and (active.episodeNumber):
             result["secondary"] += f" (S{active.seasonNumber}:E{active.episodeNumber})"
@@ -325,9 +331,12 @@ class Perplex:
         result: Dict[str, Any] = {}
 
         result["primary"] = active.titleSort
+        now = int(datetime.now().timestamp())
+        result["start"] = now - int(active.viewOffset / 1000)
         result["secondary"] = f"by {active.artist().title}"
         result["remaining"] = int((active.duration / 1000) - (active.viewOffset / 1000))
         result["imageText"] = active.parentTitle
+        result["activity_type"] = ActivityType.LISTENING
 
         # Default to image uploaded via Discord Developer Portal
         result["image"] = "music"
@@ -398,12 +407,15 @@ class Perplex:
             client.update(
                 details=title,
                 state=data.get("secondary"),
+                start=data.get("start"),
                 end=int(datetime.now().timestamp() + data["remaining"]),
                 large_image=data["image"],
                 large_text=data["imageText"],
                 small_image="plex",
                 small_text="Plex",
                 buttons=data["buttons"],
+                activity_type=data.get("activity_type"),
+                name=title,
             )
         except Exception as e:
             logger.error(f"Failed to set Discord Rich Presence to {title}, {e}")
