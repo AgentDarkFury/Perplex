@@ -242,7 +242,7 @@ class Perplex:
         result: Dict[str, Any] = {}
 
         metadata: Optional[Dict[str, Any]] = Perplex.FetchMetadata(
-            self, active.title, active.year, "movie"
+            self, active.title, active.year, "movie", getattr(active, "guids", None)
         )
 
         if minimal:
@@ -292,7 +292,7 @@ class Perplex:
         result: Dict[str, Any] = {}
 
         metadata: Optional[Dict[str, Any]] = Perplex.FetchMetadata(
-            self, active.show().title, active.show().year, "tv"
+            self, active.show().title, active.show().year, "tv", getattr(active.show(), "guids", None)
         )
 
         result["primary"] = active.show().title
@@ -347,9 +347,9 @@ class Perplex:
         return result
 
     def FetchMetadata(
-        self: Self, title: str, year: int, format: str
+        self: Self, title: str, year: int, format: str, guids: Optional[List[Any]] = None
     ) -> Optional[Dict[str, Any]]:
-        """Fetch metadata for the provided title from TMDB."""
+        """Fetch metadata for the provided title/guids from TMDB."""
 
         settings: Dict[str, Any] = self.config["tmdb"]
         key: str = settings["apiKey"]
@@ -359,6 +359,63 @@ class Perplex:
 
             return
 
+        tmdb_id = None
+        imdb_id = None
+        tvdb_id = None
+
+        if guids:
+            for guid_obj in guids:
+                guid_str: str = getattr(guid_obj, "id", "")
+                if guid_str.startswith("tmdb://"):
+                    tmdb_id = guid_str.replace("tmdb://", "")
+                elif guid_str.startswith("imdb://"):
+                    imdb_id = guid_str.replace("imdb://", "")
+                elif guid_str.startswith("tvdb://"):
+                    tvdb_id = guid_str.replace("tvdb://", "")
+
+        # 1. Try finding by direct TMDB ID
+        if tmdb_id:
+            try:
+                res: Response = httpx.get(
+                    f"https://api.themoviedb.org/3/{format}/{tmdb_id}?api_key={key}"
+                )
+                res.raise_for_status()
+                data_tmdb: Dict[str, Any] = res.json()
+                data_tmdb["media_type"] = format
+                logger.debug(f"(HTTP {res.status_code}) GET {res.url}")
+                return data_tmdb
+            except Exception as e:
+                logger.warning(f"Failed to fetch metadata by TMDB ID {tmdb_id}, {e}")
+
+        # 2. Try finding by IMDB or TVDB ID via find endpoint
+        external_id = None
+        external_source = None
+        if imdb_id:
+            external_id = imdb_id
+            external_source = "imdb_id"
+        elif tvdb_id:
+            external_id = tvdb_id
+            external_source = "tvdb_id"
+
+        if external_id and external_source:
+            try:
+                res: Response = httpx.get(
+                    f"https://api.themoviedb.org/3/find/{external_id}?external_source={external_source}&api_key={key}"
+                )
+                res.raise_for_status()
+                data_ext: Dict[str, Any] = res.json()
+                logger.debug(f"(HTTP {res.status_code}) GET {res.url}")
+                
+                results_key = "movie_results" if format == "movie" else "tv_results"
+                results = data_ext.get(results_key, [])
+                if results:
+                    entry = results[0]
+                    entry["media_type"] = format
+                    return entry
+            except Exception as e:
+                logger.warning(f"Failed to fetch metadata by {external_source} {external_id}, {e}")
+
+        # 3. Fallback to title/year search
         try:
             res: Response = httpx.get(
                 f"https://api.themoviedb.org/3/search/multi?api_key={key}&query={urllib.parse.quote(title)}"
@@ -376,18 +433,18 @@ class Perplex:
 
         for entry in data.get("results", []):
             if format == "movie":
-                if entry["media_type"] != format:
+                if entry.get("media_type") != format:
                     continue
-                elif title.lower() != entry["title"].lower():
+                elif title.lower() != entry.get("title", "").lower():
                     continue
-                elif not entry["release_date"].startswith(str(year)):
+                elif not entry.get("release_date", "").startswith(str(year)):
                     continue
             elif format == "tv":
-                if entry["media_type"] != format:
+                if entry.get("media_type") != format:
                     continue
-                elif title.lower() != entry["name"].lower():
+                elif title.lower() != entry.get("name", "").lower():
                     continue
-                elif not entry["first_air_date"].startswith(str(year)):
+                elif not entry.get("first_air_date", "").startswith(str(year)):
                     continue
 
             return entry
