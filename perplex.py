@@ -30,6 +30,7 @@ class Perplex:
         logger.info("https://github.com/EthanC/Perplex")
 
         self.config: Dict[str, Any] = Perplex.LoadConfig(self)
+        self.metadata_cache: Dict[str, Any] = {}
 
         Perplex.SetupLogging(self)
 
@@ -359,6 +360,18 @@ class Perplex:
 
             return
 
+        if not hasattr(self, "metadata_cache"):
+            self.metadata_cache = {}
+
+        guid_key = ""
+        if guids:
+            guid_key = ",".join(sorted([getattr(g, "id", "") for g in guids if getattr(g, "id", "")]))
+        cache_key = f"{format}:{title}:{year}:{guid_key}"
+
+        if cache_key in self.metadata_cache:
+            logger.trace(f"Using cached metadata for {title} ({year})")
+            return self.metadata_cache[cache_key]
+
         tmdb_id = None
         imdb_id = None
         tvdb_id = None
@@ -383,6 +396,7 @@ class Perplex:
                 data_tmdb: Dict[str, Any] = res.json()
                 data_tmdb["media_type"] = format
                 logger.debug(f"(HTTP {res.status_code}) GET {res.url}")
+                self.metadata_cache[cache_key] = data_tmdb
                 return data_tmdb
             except Exception as e:
                 logger.warning(f"Failed to fetch metadata by TMDB ID {tmdb_id}, {e}")
@@ -411,6 +425,7 @@ class Perplex:
                 if results:
                     entry = results[0]
                     entry["media_type"] = format
+                    self.metadata_cache[cache_key] = entry
                     return entry
             except Exception as e:
                 logger.warning(f"Failed to fetch metadata by {external_source} {external_id}, {e}")
@@ -426,7 +441,7 @@ class Perplex:
             logger.trace(res.text)
         except Exception as e:
             logger.error(f"Failed to fetch metadata for {title} ({year}), {e}")
-
+            self.metadata_cache[cache_key] = None
             return
 
         data: Dict[str, Any] = res.json()
@@ -447,9 +462,11 @@ class Perplex:
                 elif not entry.get("first_air_date", "").startswith(str(year)):
                     continue
 
+            self.metadata_cache[cache_key] = entry
             return entry
 
         logger.warning(f"Could not locate metadata for {title} ({year})")
+        self.metadata_cache[cache_key] = None
 
     def SetPresence(self: Self, client: Presence, data: Dict[str, Any]) -> bool:
         """Set the Rich Presence status for the provided Discord client."""
