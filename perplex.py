@@ -207,24 +207,35 @@ class Perplex:
             exit(1)
 
         sessions: List[Media] = server.sessions()
-        active: Optional[Union[MovieSession, EpisodeSession, TrackSession]] = None
+        matching_sessions: List[Union[MovieSession, EpisodeSession, TrackSession]] = []
 
-        if len(sessions) > 0:
-            i: int = 0
+        configured_users = [entry.lower() for entry in settings.get("users", [])]
 
-            for entry in settings["users"]:
-                for result in sessions:
-                    if entry.lower() in [alias.lower() for alias in result.usernames]:
-                        active = sessions[i]
+        for result in sessions:
+            usernames = [alias.lower() for alias in getattr(result, "usernames", [])]
+            if any(user in usernames for user in configured_users):
+                matching_sessions.append(result)
 
-                        break
-
-                    i += 1
-
-        if not active:
+        if not matching_sessions:
             logger.info("No active media sessions found for configured users")
-
             return
+
+        def session_priority(s: Any) -> tuple[int, int]:
+            player = getattr(s, "player", None) or (s.players[0] if getattr(s, "players", None) else None)
+            state = str(getattr(player, "state", "")).lower() if player else ""
+            state_score = 0
+            if state == "playing":
+                state_score = 3
+            elif state == "buffering":
+                state_score = 2
+            elif state == "paused":
+                state_score = 1
+
+            session_key = getattr(s, "sessionKey", 0) or 0
+            return (state_score, session_key)
+
+        matching_sessions.sort(key=session_priority, reverse=True)
+        active: Union[MovieSession, EpisodeSession, TrackSession] = matching_sessions[0]
 
         if type(active) is MovieSession:
             return active
