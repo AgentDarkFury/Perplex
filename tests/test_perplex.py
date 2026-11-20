@@ -4,6 +4,7 @@ import copy
 from types import SimpleNamespace
 
 import httpx
+import pytest
 from pypresence import ActivityType, StatusDisplayType
 from pypresence.payloads import Payload
 
@@ -15,6 +16,7 @@ from perplex.plex import PlexWatcher
 from perplex.presence import DiscordPresence, build_activity, render
 
 CONFIG = copy.deepcopy(DEFAULTS)
+CONFIG["discord"]["appId"] = "123456789"
 
 MOVIE_DETAILS = {
     "id": 693134,
@@ -358,3 +360,37 @@ def test_tray_menu_builds(monkeypatch, tmp_path):
     assert "Show my activity" in labels and "Quit" in labels
     tray._on_status(__import__("perplex.app", fromlist=["Status"]).Status("playing", "VisionQuest"))
     assert tray.icon.title == "Perplex — VisionQuest"
+
+
+def test_missing_app_id_is_reported_without_polling_plex(monkeypatch):
+    from perplex.app import Perplex
+
+    cfg = copy.deepcopy(DEFAULTS)  # appId is blank by default
+    seen = []
+    app = Perplex(cfg, on_status=seen.append)
+    app.plex.now_playing = lambda: pytest.fail("Plex should not be polled")
+    monkeypatch.setattr(presence_mod, "Presence", lambda *a, **k: pytest.fail("should not connect"))
+
+    app.tick(0)
+    assert seen[-1].kind == "error" and "Discord app ID" in seen[-1].text
+
+
+def test_rejected_app_id_stops_retrying(monkeypatch):
+    from pypresence.exceptions import InvalidID
+
+    attempts = []
+
+    class Rejecting:
+        def __init__(self, *a, **k):
+            attempts.append(1)
+
+        def connect(self):
+            raise InvalidID
+
+    monkeypatch.setattr(presence_mod, "Presence", Rejecting)
+    d = DiscordPresence("923857760897101855")
+    assert not d.show(build_activity(episode(), None, CONFIG, None, now=0))
+    assert d.problem == "Discord app ID is invalid — check Settings"
+    d._next_connect = 0
+    d.show(build_activity(episode(), None, CONFIG, None, now=0))
+    assert len(attempts) == 1

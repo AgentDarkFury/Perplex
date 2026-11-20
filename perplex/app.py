@@ -115,6 +115,11 @@ class Perplex:
     def tick(self, empty_polls: int) -> int:
         """Run one poll. Returns the updated count of consecutive empty polls."""
 
+        if self.discord.problem:
+            # Nothing can be shown until the settings are fixed; don't poll Plex for nothing.
+            self._set_status("error", self.discord.problem)
+            return empty_polls
+
         np = self.plex.now_playing()
 
         if np is None or (np.paused and self.config["discord"].get("clearOnPause")):
@@ -137,6 +142,10 @@ class Perplex:
         meta = self.metadata(np)
         activity = build_activity(np, meta, self.config, self.poster(np, meta))
         self.discord.show(activity)
+
+        if self.discord.problem:
+            self._set_status("error", self.discord.problem)
+            return 0
 
         summary = " — ".join(t for t in (activity.details, activity.state) if t)
         if not self.discord.connected:

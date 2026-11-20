@@ -37,8 +37,13 @@ Music is shown too (`Listening to …`, with title, artist, and album).
 1. Get `Perplex.exe`:
    - download it from the latest **Test and build** run on the Actions tab (artifact `Perplex-windows`), or
    - build it yourself with `.\build.ps1` (output: `dist\Perplex.exe`).
-2. Run it. On first launch it creates `config.json` and opens it in your editor. Add your TMDB API key (free from <https://www.themoviedb.org/settings/api>; either the v3 "API Key" or the v4 "API Read Access Token" works) and save.
-3. Your browser opens plex.tv. Approve Perplex there, and you're done.
+2. Create a Discord application (free, one-time; see [Discord app ID](#discord-app-id) below) and copy its **Application ID**.
+3. Run `Perplex.exe`. On first launch it creates `config.json` and opens it in your editor. Fill in:
+   - `discord.appId`: your Application ID, in quotes.
+   - `tmdb.apiKey`: a free key from <https://www.themoviedb.org/settings/api>. Either the v3 "API Key" or the v4 "API Read Access Token" works.
+
+   Then save the file.
+4. Your browser opens plex.tv. Approve Perplex there, and you're done.
 
 Saving `config.json` applies the changes right away; there's no need to restart. The Discord desktop app must be running on the same PC.
 
@@ -54,6 +59,21 @@ Saving `config.json` applies the changes right away; there's no need to restart.
 The icon colour shows the state: amber while playing (pause bars when paused), grey when idle or hidden, blue while connecting, and red on an error (hover for details).
 
 Perplex keeps its files (`config.json`, `auth.txt`, `cache.json`, `perplex.log`) in `%APPDATA%\Perplex`. You can choose another folder with the `PERPLEX_HOME` environment variable.
+
+## Discord app ID
+
+Discord shows rich presence under an application that you own. Perplex doesn't ship a shared one.
+
+1. Open <https://discord.com/developers/applications> and click **New Application**.
+2. Name it. The name is shown as the header of the activity card on your profile, so **Plex** works well.
+3. On **General Information**, copy the **Application ID** into `discord.appId`.
+4. Optional: under **Rich Presence → Art Assets**, upload images named `plex` (the small corner icon) and `movie`, `tv` and `music` (shown when TMDB has no poster). Posters from TMDB need no uploads.
+
+To check an ID, open `https://discord.com/api/v10/applications/<ID>/rpc` in a browser:
+- A valid ID returns JSON with your app's `name`.
+- An invalid or deleted ID returns `Unknown Application`.
+
+If the ID is missing or Discord rejects it, the tray status shows this and Perplex waits until you fix the setting.
 
 ## Running from source
 
@@ -82,7 +102,7 @@ python -m venv .venv
 | `tmdb.language` | `en-US` | Language for TMDB titles. |
 | `tmdb.posterSize` | `w500` | TMDB image size (`w342`, `w500`, `w780`, `original`). |
 | `tmdb.seasonPosters` | `false` | Use the season's poster for episodes instead of the show's. |
-| `discord.appId` | Perplex app | Discord application ID. The app name is shown as the profile card header. |
+| `discord.appId` | *(required)* | Your Discord application ID (see [Discord app ID](#discord-app-id)). The app's name is shown as the profile card header. |
 | `discord.statusDisplay` | `details` | What follows "Watching" in the member list: `details` (show/movie title), `state`, or `name` (app name). |
 | `discord.clearOnPause` | `false` | Hide the presence while paused (otherwise it shows "Paused" with no progress bar). |
 | `discord.buttons` | `true` | Show "View on TMDB" and "View on IMDb" buttons (visible to others, not to yourself). |

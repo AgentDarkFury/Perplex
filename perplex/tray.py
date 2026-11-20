@@ -170,7 +170,7 @@ class TrayApp:
 
         if self.first_run:
             write_starter_config(self.config_file)
-            self._notify("Welcome! Add your TMDB API key in Settings to show posters. Opening settings…")
+            self._notify("Welcome! Add your Discord app ID and TMDB API key in Settings. Opening settings…")
             _open_file(self.config_file)
 
         while not self.quitting.is_set():

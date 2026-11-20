@@ -34,7 +34,7 @@ DEFAULTS: dict[str, Any] = {
         "cacheFile": "cache.json",
     },
     "discord": {
-        "appId": "923857760897101855",
+        "appId": "",
         # What appears after "Watching" in the member list: "details", "state" or "name".
         "statusDisplay": "details",
         "clearOnPause": False,
