@@ -8,6 +8,7 @@ from typing import Any
 
 from loguru import logger
 from pypresence import ActivityType, Presence, StatusDisplayType
+from pypresence.exceptions import InvalidID
 
 from .models import Metadata, NowPlaying
 
@@ -17,6 +18,11 @@ SEEK_TOLERANCE = 12
 # Discord allows 5 activity updates per 20 seconds.
 MIN_UPDATE_INTERVAL = 4.0
 RECONNECT_INTERVAL = 15.0
+
+APP_ID_HELP = (
+    "Create a free application at https://discord.com/developers/applications, "
+    "copy its Application ID, and put it in config.json under discord.appId."
+)
 
 _STATUS_DISPLAY = {
     "name": StatusDisplayType.NAME,
@@ -190,22 +196,36 @@ def build_activity(
 class DiscordPresence:
     """A Discord RPC connection that only sends updates when something changed."""
 
-    def __init__(self, app_id: str | int) -> None:
-        self.app_id = str(app_id)
+    def __init__(self, app_id: str | int | None) -> None:
+        self.app_id = str(app_id or "").strip()
         self.rpc: Presence | None = None
         self.current: Activity | None = None
         self._next_connect = 0.0
-        self._last_update = 0.0
+        self._last_update = float("-inf")  # never rate-limit the first update
+        # A setup problem only a settings change can fix (the engine is rebuilt on save).
+        self.problem: str | None = None
+
+        if not self.app_id.isdigit():
+            self.problem = "Add your Discord app ID in Settings"
+            logger.error(f"No valid discord.appId set. {APP_ID_HELP}")
+
+    @property
+    def connected(self) -> bool:
+        return self.rpc is not None
 
     def _connected(self) -> bool:
         if self.rpc:
             return True
-        if time.monotonic() < self._next_connect:
+        if self.problem or time.monotonic() < self._next_connect:
             return False
 
         try:
-            rpc = Presence(self.app_id)
+            rpc = Presence(self.app_id, connection_timeout=5)
             rpc.connect()
+        except InvalidID:
+            self.problem = "Discord app ID is invalid — check Settings"
+            logger.error(f"Discord doesn't recognise app ID {self.app_id}. {APP_ID_HELP}")
+            return False
         except Exception as e:
             self._next_connect = time.monotonic() + RECONNECT_INTERVAL
             logger.warning(f"Discord isn't reachable ({e}), retrying in {RECONNECT_INTERVAL:.0f}s")

@@ -4,6 +4,7 @@ import copy
 from types import SimpleNamespace
 
 import httpx
+import pytest
 from pypresence import ActivityType, StatusDisplayType
 from pypresence.payloads import Payload
 
@@ -15,6 +16,7 @@ from perplex.plex import PlexWatcher
 from perplex.presence import DiscordPresence, build_activity, render
 
 CONFIG = copy.deepcopy(DEFAULTS)
+CONFIG["discord"]["appId"] = "123456789"
 
 MOVIE_DETAILS = {
     "id": 693134,
@@ -266,7 +268,7 @@ def test_session_priority_prefers_playing_then_user_order():
 
 
 def test_main_loop_memoizes_metadata_and_clears_after_grace(tmp_path, monkeypatch):
-    from perplex.__main__ import Perplex
+    from perplex.app import Perplex
 
     cfg = copy.deepcopy(CONFIG)
     cfg["tmdb"]["apiKey"] = "abc"
@@ -289,3 +291,106 @@ def test_main_loop_memoizes_metadata_and_clears_after_grace(tmp_path, monkeypatc
     playing[0] = None
     assert app.tick(0) == 1 and app.discord.rpc.cleared == 0  # brief gap: keep presence
     assert app.tick(1) == 2 and app.discord.rpc.cleared == 1
+
+
+# --------------------------------------------------------------------- app
+
+
+def test_engine_reports_status_hides_and_stops(tmp_path, monkeypatch):
+    import threading
+
+    from perplex.app import Perplex
+
+    monkeypatch.setenv("PERPLEX_HOME", str(tmp_path))
+    seen = []
+    app = Perplex(copy.deepcopy(CONFIG), on_status=seen.append)
+    app.discord.rpc = FakeRPC()
+    app.plex.login = lambda: None
+    app.plex.now_playing = lambda: episode()
+    monkeypatch.setattr(presence_mod.time, "monotonic", iter(range(0, 10_000, 10)).__next__)
+
+    worker = threading.Thread(target=app.run, daemon=True)
+    worker.start()
+    try:
+        for _ in range(100):
+            if seen and seen[-1].kind == "playing":
+                break
+            threading.Event().wait(0.02)
+        assert seen[-1].kind == "playing" and seen[-1].text == "VisionQuest — S01E03 · Through a Glass"
+        assert len(app.discord.rpc.updates) == 1
+
+        app.hidden = True
+        app.tick(0)
+        assert seen[-1].kind == "hidden" and app.discord.rpc.cleared == 1
+    finally:
+        app.stop()
+        worker.join(timeout=2)
+    assert not worker.is_alive()
+
+
+def test_data_dir_and_starter_config(tmp_path, monkeypatch):
+    from perplex import paths
+    from perplex.config import load_config, write_starter_config
+
+    monkeypatch.setenv("PERPLEX_HOME", str(tmp_path / "home"))
+    assert paths.config_path() == tmp_path / "home" / "config.json"
+    assert paths.resolve("cache.json") == tmp_path / "home" / "cache.json"
+
+    write_starter_config(paths.config_path())
+    cfg = load_config(paths.config_path())
+    assert cfg["discord"]["formats"]["episode"]["details"] == "{show}"
+
+
+def test_icons_render(tmp_path):
+    from perplex.icon import COLORS, make_icon, write_ico
+
+    for kind in COLORS:
+        img = make_icon(kind)
+        assert img.size == (64, 64) and img.mode == "RGBA"
+    write_ico(str(tmp_path / "p.ico"))
+    assert (tmp_path / "p.ico").stat().st_size > 1000
+
+
+def test_tray_menu_builds(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERPLEX_HOME", str(tmp_path))
+    from perplex.tray import TrayApp
+
+    tray = TrayApp()
+    labels = [item.text for item in tray.icon.menu.items]
+    assert "Show my activity" in labels and "Quit" in labels
+    tray._on_status(__import__("perplex.app", fromlist=["Status"]).Status("playing", "VisionQuest"))
+    assert tray.icon.title == "Perplex — VisionQuest"
+
+
+def test_missing_app_id_is_reported_without_polling_plex(monkeypatch):
+    from perplex.app import Perplex
+
+    cfg = copy.deepcopy(DEFAULTS)  # appId is blank by default
+    seen = []
+    app = Perplex(cfg, on_status=seen.append)
+    app.plex.now_playing = lambda: pytest.fail("Plex should not be polled")
+    monkeypatch.setattr(presence_mod, "Presence", lambda *a, **k: pytest.fail("should not connect"))
+
+    app.tick(0)
+    assert seen[-1].kind == "error" and "Discord app ID" in seen[-1].text
+
+
+def test_rejected_app_id_stops_retrying(monkeypatch):
+    from pypresence.exceptions import InvalidID
+
+    attempts = []
+
+    class Rejecting:
+        def __init__(self, *a, **k):
+            attempts.append(1)
+
+        def connect(self):
+            raise InvalidID
+
+    monkeypatch.setattr(presence_mod, "Presence", Rejecting)
+    d = DiscordPresence("923857760897101855")
+    assert not d.show(build_activity(episode(), None, CONFIG, None, now=0))
+    assert d.problem == "Discord app ID is invalid — check Settings"
+    d._next_connect = 0
+    d.show(build_activity(episode(), None, CONFIG, None, now=0))
+    assert len(attempts) == 1

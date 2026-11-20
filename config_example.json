@@ -19,7 +19,7 @@
         "seasonPosters": false
     },
     "discord": {
-        "appId": "923857760897101855",
+        "appId": "",
         "statusDisplay": "details",
         "clearOnPause": false,
         "buttons": true
