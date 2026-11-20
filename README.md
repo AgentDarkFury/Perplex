@@ -30,21 +30,43 @@ Music is shown too (`Listening to …`, with title, artist, and album).
 - Sign in with a browser link, a saved token, or a username and password with 2FA.
 - Lets you change the text through templates.
 
-## Setup
+## Windows app (system tray)
 
-Requires [Python 3.11+](https://www.python.org/) and the Discord desktop app running on the same machine.
+`Perplex.exe` is a single file with no installer and no console window. It runs quietly in the system tray.
 
-1. Get a free TMDB API key from <https://www.themoviedb.org/settings/api>. Either the v3 "API Key" or the v4 "API Read Access Token" works.
-2. Copy `config_example.json` to `config.json` and fill it in (at least `tmdb.apiKey` and `plex.servers`).
-3. Run `./start.ps1`. Or set it up yourself:
+1. Get `Perplex.exe`:
+   - download it from the latest **Test and build** run on the Actions tab (artifact `Perplex-windows`), or
+   - build it yourself with `.\build.ps1` (output: `dist\Perplex.exe`).
+2. Run it. On first launch it creates `config.json` and opens it in your editor. Add your TMDB API key (free from <https://www.themoviedb.org/settings/api>; either the v3 "API Key" or the v4 "API Read Access Token" works) and save.
+3. Your browser opens plex.tv. Approve Perplex there, and you're done.
 
-   ```powershell
-   python -m venv .venv
-   .venv/Scripts/python -m pip install -r requirements.txt
-   .venv/Scripts/python -m perplex
-   ```
+Saving `config.json` applies the changes right away; there's no need to restart. The Discord desktop app must be running on the same PC.
 
-On first run, if `username` and `password` are empty, Perplex prints a plex.tv link. Open it to approve Perplex. The token is then saved to `auth.txt`.
+**Tray menu** (right-click the icon):
+
+- **Status line:** what's being shown, e.g. `VisionQuest — S01E03 · Through a Glass`.
+- **Show my activity:** untick to hide your presence without quitting.
+- **Settings…:** opens `config.json`. Double-clicking the icon does the same.
+- **Open log:** opens `perplex.log`, which is useful if something isn't showing.
+- **Start with Windows:** launch Perplex when you sign in. No admin rights are needed.
+- **Quit:** clears your presence and exits.
+
+The icon colour shows the state: amber while playing (pause bars when paused), grey when idle or hidden, blue while connecting, and red on an error (hover for details).
+
+Perplex keeps its files (`config.json`, `auth.txt`, `cache.json`, `perplex.log`) in `%APPDATA%\Perplex`. You can choose another folder with the `PERPLEX_HOME` environment variable.
+
+## Running from source
+
+Requires [Python 3.11+](https://www.python.org/).
+
+```powershell
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt
+.venv/Scripts/python -m perplex          # console mode, logs to the terminal
+.venv/Scripts/pythonw -m perplex --tray  # tray mode, no console
+```
+
+`./start.ps1` does the setup and runs console mode. When run from source, Perplex uses `config.json` in the current folder if there is one, and `%APPDATA%\Perplex` otherwise. If `username` and `password` are empty, it opens a plex.tv link so you can approve it, then saves the token to `auth.txt`.
 
 ## Configuration
 
@@ -53,7 +75,7 @@ On first run, if `username` and `password` are empty, Perplex prints a plex.tv l
 | `plex.url` | `""` | Optional direct server URL, e.g. `http://192.168.1.10:32400`. Faster than looking servers up through plex.tv. |
 | `plex.servers` | `[]` | Server names in priority order (all servers if empty). |
 | `plex.users` | `[]` | Plex users whose playback to show, in priority order. Defaults to your own account. |
-| `plex.username` / `password` / `twoFactor` | | Optional password login. Leave empty to sign in with a link instead. |
+| `plex.username` / `password` / `twoFactor` | | Optional password login. Leave empty to sign in with a link instead. Two-factor codes can only be typed in console mode; the tray app uses the browser link. |
 | `plex.pollInterval` | `5` | Seconds between Plex checks. Discord is only updated on changes. |
 | `tmdb.enable` | `true` | Turn TMDB lookups on or off. |
 | `tmdb.apiKey` | | TMDB v3 key or v4 read token. Can also be set with the `TMDB_API_KEY` environment variable. |
@@ -89,6 +111,9 @@ Available fields:
 ## Development
 
 ```powershell
-.venv/Scripts/python -m pip install pytest
+.venv/Scripts/python -m pip install pytest pyinstaller
 .venv/Scripts/python -m pytest tests
+.\build.ps1   # builds dist\Perplex.exe
 ```
+
+GitHub Actions runs the tests and builds `Perplex.exe` on every push and pull request.

@@ -195,7 +195,11 @@ class DiscordPresence:
         self.rpc: Presence | None = None
         self.current: Activity | None = None
         self._next_connect = 0.0
-        self._last_update = 0.0
+        self._last_update = float("-inf")  # never rate-limit the first update
+
+    @property
+    def connected(self) -> bool:
+        return self.rpc is not None
 
     def _connected(self) -> bool:
         if self.rpc:
@@ -204,7 +208,7 @@ class DiscordPresence:
             return False
 
         try:
-            rpc = Presence(self.app_id)
+            rpc = Presence(self.app_id, connection_timeout=5)
             rpc.connect()
         except Exception as e:
             self._next_connect = time.monotonic() + RECONNECT_INTERVAL

@@ -88,3 +88,40 @@ def load_config(path: str | Path = "config.json") -> dict[str, Any]:
         config["tmdb"]["apiKey"] = key
 
     return config
+
+
+# What a brand-new config.json looks like (mirrors config_example.json).
+STARTER: dict[str, Any] = {
+    "logging": {"severity": "INFO"},
+    "plex": {
+        "url": "",
+        "username": "",
+        "password": "",
+        "twoFactor": False,
+        "servers": [],
+        "users": [],
+        "pollInterval": 5,
+    },
+    "tmdb": {
+        "enable": True,
+        "apiKey": "",
+        "language": "en-US",
+        "posterSize": "w500",
+        "seasonPosters": False,
+    },
+    "discord": {
+        "appId": DEFAULTS["discord"]["appId"],
+        "statusDisplay": "details",
+        "clearOnPause": False,
+        "buttons": True,
+    },
+}
+
+
+def write_starter_config(path: str | Path) -> None:
+    """Create a starter config.json if none exists."""
+
+    path = Path(path)
+
+    if not path.exists():
+        path.write_text(json.dumps(STARTER, indent=4) + "\n", encoding="utf-8")

@@ -1,0 +1,33 @@
+name: Test and build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pytest pyinstaller
+
+      - name: Run tests
+        run: python -m pytest -q tests
+
+      - name: Build Perplex.exe
+        run: |
+          python -m perplex.icon build/perplex.ico
+          python -m PyInstaller --noconfirm --onefile --windowed --name Perplex --icon build/perplex.ico --paths . --exclude-module tkinter packaging/perplex_tray.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Perplex-windows
+          path: dist/Perplex.exe

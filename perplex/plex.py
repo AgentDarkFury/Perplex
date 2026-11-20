@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+import sys
+import webbrowser
+from typing import Any, Callable
 
 from loguru import logger
 from plexapi.myplex import MyPlexAccount, MyPlexPinLogin
 from plexapi.server import PlexServer
 
 from .models import NowPlaying
-
-TOKEN_FILE = Path("auth.txt")
+from .paths import token_path
 
 _STATE_PRIORITY = {"playing": 3, "buffering": 2, "paused": 1}
 
@@ -37,8 +37,19 @@ def _int(value: Any) -> int | None:
 class PlexWatcher:
     """Owns the Plex connection and turns sessions into ``NowPlaying`` snapshots."""
 
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        open_url: Callable[[str], Any] | None = None,
+        interactive: bool | None = None,
+    ) -> None:
         self.settings = config["plex"]
+        # How to show the Plex sign-in link (the tray app opens the browser).
+        self.open_url = open_url
+        # Whether we can prompt on a console (false for the tray app).
+        if interactive is None:
+            interactive = bool(sys.stdin and sys.stdin.isatty())
+        self.interactive = interactive
         self.account: MyPlexAccount | None = None
         self.server: PlexServer | None = None
         self._show_cache: dict[str, tuple[int | None, tuple[str, ...]]] = {}
@@ -48,10 +59,11 @@ class PlexWatcher:
 
     def login(self) -> MyPlexAccount:
         account: MyPlexAccount | None = None
+        token_file = token_path()
 
-        if TOKEN_FILE.is_file():
+        if token_file.is_file():
             try:
-                account = MyPlexAccount(token=TOKEN_FILE.read_text().strip())
+                account = MyPlexAccount(token=token_file.read_text().strip())
             except Exception as e:
                 logger.warning(f"Saved Plex token was rejected, logging in again ({e})")
 
@@ -59,28 +71,43 @@ class PlexWatcher:
             password: str = self.settings["password"]
 
             if self.settings.get("twoFactor"):
-                code = input("Enter Plex verification code: ").strip()
-                password += code
+                if self.interactive:
+                    password += input("Enter Plex verification code: ").strip()
+                else:
+                    logger.warning("Two-factor login needs a console; using browser sign-in instead")
+                    password = ""
 
-            try:
-                account = MyPlexAccount(self.settings["username"], password)
-            except Exception as e:
-                logger.error(f"Plex username/password login failed, {e}")
+            if password:
+                try:
+                    account = MyPlexAccount(self.settings["username"], password)
+                except Exception as e:
+                    logger.error(f"Plex username/password login failed, {e}")
 
         if not account:
             # No password needed: approve this device in the browser instead.
             pin = MyPlexPinLogin(oauth=True)
             pin.run(timeout=300)
-            print(f"\nSign in to Plex to link Perplex:\n  {pin.oauthUrl()}\n")
+            url = pin.oauthUrl()
+            logger.info(f"Sign in to Plex to link Perplex: {url}")
+
+            if self.open_url:
+                self.open_url(url)
+            else:
+                print(f"\nSign in to Plex to link Perplex:\n  {url}\n")
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    pass
+
             pin.waitForLogin()
 
             if not pin.token:
-                raise SystemExit("Plex sign-in was not completed")
+                raise PermissionError("Plex sign-in was not completed")
 
             account = MyPlexAccount(token=pin.token)
 
         try:
-            TOKEN_FILE.write_text(account.authenticationToken)
+            token_file.write_text(account.authenticationToken)
         except Exception as e:
             logger.warning(f"Failed to save Plex token for future logins, {e}")
 
