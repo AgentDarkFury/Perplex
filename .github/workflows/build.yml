@@ -24,6 +24,7 @@ jobs:
 
       - name: Build Perplex.exe
         run: |
+          New-Item -ItemType Directory -Force build | Out-Null
           python -m perplex.icon build/perplex.ico
           python -m PyInstaller --noconfirm --onefile --windowed --name Perplex --icon build/perplex.ico --paths . --exclude-module tkinter packaging/perplex_tray.py
 
