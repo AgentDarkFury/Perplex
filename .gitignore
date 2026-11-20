@@ -134,3 +134,7 @@ dmypy.json
 # Credentials
 config.json
 auth.txt
+
+# Perplex runtime files
+cache.json
+cache.json.tmp

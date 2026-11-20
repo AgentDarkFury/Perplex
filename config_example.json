@@ -3,18 +3,25 @@
         "severity": "INFO"
     },
     "plex": {
-        "username": "example@email.com",
-        "password": "password123!",
+        "url": "",
+        "username": "",
+        "password": "",
         "twoFactor": false,
         "servers": ["My Media Server"],
-        "users": ["Ethan"]
+        "users": [],
+        "pollInterval": 5
     },
     "tmdb": {
         "enable": true,
-        "apiKey": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+        "apiKey": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        "language": "en-US",
+        "posterSize": "w500",
+        "seasonPosters": false
     },
     "discord": {
-        "appId": 923857760897101855,
-        "minimal": false
+        "appId": "923857760897101855",
+        "statusDisplay": "details",
+        "clearOnPause": false,
+        "buttons": true
     }
 }
